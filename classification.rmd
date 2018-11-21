@@ -1,0 +1,303 @@
+---
+title: "Generation DataSets"
+author: "RAS Team"
+date: "November 7, 2018"
+output: word_document
+---
+
+```{r import_libraries}
+require(data.table)
+library(data.table)
+
+require(GGally)
+library(GGally)
+
+require(lubridate)
+library(lubridate)
+
+require(randomForest)
+library(randomForest)
+
+require(rpart)
+library(rpart)
+
+require(stringr)
+library(stringr)
+```
+
+```{r split_by_month}
+#**
+#*
+# This code separates RealisationData by month
+# It generates a csv file for each month
+# All the files have the same format as RealisationData
+# ---------------------------------------------
+# |                 Warning                   |
+# |           Run it just one time            |
+# |      It is not necessary to generate      |
+# |           csv file each test.             |
+# ---------------------------------------------
+#*
+#**
+
+#read RealisationData
+realisation = fread(file = "RealisationData.csv", header = TRUE, colClasses = c("Date", "character", "character", "character", "character", "character", "Date", "Date", "integer", "integer", "character" ))
+
+#change TrafficDate to date format with lubridate "yyyy-mm-dd"
+realisation[, TrafficDate := ymd(realisation$TrafficDate)]
+
+#generate boundaries for each month
+endSep <- ymd("2017-09-30") 
+staOct <- ymd("2017-10-01")
+endOct <- ymd("2017-10-31")
+staNov <- ymd("2017-11-01")
+endNov <- ymd("2017-11-30")
+staDec <- ymd("2017-12-01")
+endDec <- ymd("2017-12-31")
+
+#generate subset with september information
+sepRealisation <- subset(realisation, TrafficDate <= endSep)
+#write subset in a csv file
+write.csv(sepRealisation, file = "SepRealisationData.csv", row.names = FALSE)
+#Erase subset to not saturate RAM
+rm(sepRealisation)
+
+#generate subset with october information
+octRealisation <- subset(realisation, staOct <= TrafficDate & TrafficDate <= endOct)
+#write subset in a csv file
+write.csv(octRealisation, file = "OctRealisationData.csv", row.names = FALSE)
+#Erase subset to not saturate RAM
+rm(octRealisation)
+
+
+#generate subset with november information
+novRealisation <- subset(realisation, staNov <= TrafficDate & TrafficDate <= endNov)
+#write subset in a csv file
+write.csv(novRealisation, file = "NovRealisationData.csv", row.names = FALSE)
+#Erase subset to not saturate RAM
+rm(novRealisation)
+
+#generate subset with december information
+decRealisation <- subset(realisation, staDec <= TrafficDate & TrafficDate <= endDec)
+#write subset in a csv file
+write.csv(decRealisation, file = "DecRealisationData.csv", row.names = FALSE)
+#Erase subset to not saturate RAM
+rm(decRealisation)
+
+#Erase variables to not saturate RAM
+rm(realisation)
+rm(list = c("endSep", "staOct", "endOct" , "staNov", "endNov", "staDec", "endDec"))
+```
+```{r change_data_type_and_add_auxiliar_columns}
+#**
+#
+# Function Name:
+#   changeDTaddAC <- [change] [D]ata [T]ype and [add] [A]uxiliar [C]olumns
+# Arguments:
+#   (data.frame) dFrame
+# Objective:
+#   Cast the columns and add auxiliar columns with values easier to handle. 
+# Return:
+#   (data.frame) dFrame
+# Author:
+#   Javier
+# Last Modification:
+#   Nov 13, 2018
+#
+#**
+changeDTaddAC <- function(dFrame) { 
+  #Get the hour (hh:mm:ss) from PlannedTime as string
+  dFrame$PTimeStr <- str_remove(dFrame$PlannedTime, "[0-9]{4}-[0-9]{2}-[0-9]{2} ")
+  #Get the hour (hh:mm) from PTimeStr as string
+  dFrame$PTimeStr <- str_remove(dFrame$PTimeStr, ":[0-9]{2}$")
+  #Cast PTimeStr to a hm with lubridate
+  dFrame[,PlanTime := hm(PTimeStr)]
+  #Change TrafficDate "yyyy-mm-dd" to weekday, weekday start from Sunday(1) to Saturday(7)
+  dFrame[,Weekday := wday(TrafficDate)]
+  return(dFrame)
+}
+```
+```{r wide_format_dataset_actual_and_after_20_minutes}
+#**
+#
+# Function Name:
+#   wfDsCur20m <- [w]ide [f]ormat [D]ata[s]et [Act]ual and [Aft]er [20] [m]inutes
+# Arguments:
+#   (data.frame) dFrame
+# Objective:
+#   Change the dFrame to wide format, observation with actual and 20 min after.
+# Return:
+#   NA
+# Author:
+#   Javier
+# Last Modification:
+#   Nov 20, 2018
+#
+#**
+wfDsActAft20m <- function(dFrame) {
+	
+	col_names = TRUE
+
+	aux <- data.frame(
+		Trainnumber = c(""),
+		Trainseries = c("123"),
+		Weekday = c(""),
+		Location = c(""),
+		Activity = c(""),
+		PlannedTime = c(""),
+		Delay_min = c(""),
+		Location_20 = c(""),
+		Activity_20 = c(""),
+		PlannedTime_20 = c(""),
+		Delay_min_20 = c(""))
+
+	n <- nrow(dFrame) #number of observation
+	
+	i <- 1 #control variable
+	j <- i + 1 #control variable
+	#actual information 
+	while(i <= n) { #read until last observation
+	  
+	  #read the i-st observation
+		iSub <- dFrame[i]
+		#get train number from iSub
+		iTrain <- iSub$Trainnumber
+		#get planned time for iSub and add 20 minutes
+		iTime20 <- dFrame$PlanTime[i]  + minutes(20)
+		
+		#information after 20 minutes
+		while(j <= n) {#read until last obsevation
+		  #read j-st observation 
+			jSub <- dFrame[j]
+			#get train number from jSub
+			jTrain <- jSub$Trainnumber
+			#get planned time for jSub
+			jTime <- dFrame$PlanTime[j]
+			
+			#check if the information is for the same subject
+			if(iTrain == jTrain) {
+			  
+			  #check if jTime is at least 20 minutes after iTime
+				if(iTime20 < jTime) {
+					
+					#aux data frame
+
+					#add the actual information iSub
+					aux$Trainnumber <- iTrain
+					aux$Trainseries <- iSub$Trainseries
+					aux$Weekday = c(iSub$Weekday)
+					aux$Location = iSub$Location
+					aux$Activity = iSub$Activity
+					aux$PlannedTime = iSub$PTimeStr
+					aux$Delay_min = iSub$Delay_min
+				  
+				  #Cause jTime is bigger than iTime+20minutes
+				  #check if the station before is closser to iTime+20
+					#the closer one to iTime will be the information for 20 min after
+				  
+				  #read (j-1)-st observation 
+					pSub <- dFrame[j-1]
+					#get planned time for pSub
+					pTime <- dFrame$PlanTime[j-1]
+					
+					#get the difference between each pTime and jTime, and iTime 
+					#use absolute to work with postitive numbers
+					pSDif <- abs(iTime20 - pTime) #[pS]ub [Dif]ference
+				  jSDif <- abs(jTime - iTime20) #[jS]ub [Dif]ference
+					
+					
+					if(pSDif < jSDif) {#pSub is closer to iSub than jSub
+					  
+					  #add information for 20 min after pSub
+					  aux$Location_20 = pSub$Location
+						aux$Activity_20 = pSub$Activity
+						aux$PlannedTime_20 = pSub$PTimeStr
+						aux$Delay_min_20 = pSub$Delay_min
+						
+					} else {#jSub is closer to iSub than pSub
+						
+						#add information for 20 min after jSub
+						aux$Location_20 = jSub$Location
+						aux$Activity_20 = jSub$Activity
+						aux$PlannedTime_20 = jSub$PTimeStr
+						aux$Delay_min_20 = jSub$Delay_min	
+						
+					}
+					write.table(aux, 
+					            file = "realisationWF1M.csv", 
+					            sep = ",", row.names = FALSE, 
+					            col.names = col_names, 
+					            append = !col_names)
+					if(col_names) {
+						col_names <- !col_names
+					}
+					break
+				}
+			} else { #iSub and jSub are observation for different trains
+			  i <- j - 1 #it wil be equal to j after increment
+			  break
+			}
+			j <- j + 1
+		}
+		i <- i + 1
+	}
+}
+```
+```{r open_realisation_data}
+realisation = fread(file = "DecRealisationData.csv", header = TRUE, colClasses = c("Date", "character", "character", "character", "character", "character", "Date", "Date", "integer", "integer", "character" ))
+nrow(realisation)
+```
+```{r call_changeDTaddAC}
+Sys.time()
+realisation <- changeDTaddAC(realisation)
+Sys.time()
+```
+```{r call_wfDsActAft20m}
+#**
+#*
+# This code call the function that generates wide format dataset
+# ---------------------------------------------
+# |                 Warning                   |
+# |     This function takes a lot of time     |
+# |     N° Observation    Time (minutes)      |
+# |          100000           13.1399         |
+# |          500000          128.75178        |
+# |         1000000          478.9899         |
+# ---------------------------------------------
+#*
+#**
+s <- Sys.time()
+s
+wfDsActAft20m(realisation)
+e <- Sys.time()
+e
+e - s
+```
+```{r rename_columns_wf}
+names(realisation_wf) <- c("Trainnumber", "Trainseries", "Weekday", "Location", "Activity", "PlannedTime", "Delay_min", "Location_20", "Activity_20", "PlannedTime_20", "Delay_min_20")
+```
+```{r write_wide_format_dataset}
+write.matrix(realisation_wf, file = "RealisationWF.csv", sep = ",")
+```
+```{r test}
+realisation_wf = fread(file = "realisationWF1M.csv", header = TRUE, colClasses = c("factor", "factor", "integer", "factor", "factor", "character", "integer", "factor", "factor", "character", "integer"  ))
+```
+
+```{r}
+fit <- rpart(Delay_min_20~ Trainnumber + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
+```
+
+```{r}
+#summary(fit)
+printcp(fit)
+```
+
+```{r}
+realisation_wf[, PlannedTime := hm(PlannedTime)]
+realisation_wf[, PlannedTime_20 := hm(PlannedTime_20)]
+```
+
+```{r}
+fit2 <- rpart(Delay_min_20 ~ Trainnumber + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
+printcp(fit2)
+```

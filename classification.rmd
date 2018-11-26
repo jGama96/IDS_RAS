@@ -15,9 +15,6 @@ library(GGally)
 require(lubridate)
 library(lubridate)
 
-require(randomForest)
-library(randomForest)
-
 require(rpart)
 library(rpart)
 
@@ -134,13 +131,15 @@ changeDTaddAC <- function(dFrame) {
 #   Nov 20, 2018
 #
 #**
-wfDsActAft20m <- function(dFrame) {
+wfDsActAft20m <- function(dFrame, fname) {
 	
 	col_names = TRUE
 
 	aux <- data.frame(
+	  TrafficDate = c(""),
 		Trainnumber = c(""),
-		Trainseries = c("123"),
+		Trainseries = c(""),
+		TrainCharacteristic = c(""),
 		Weekday = c(""),
 		Location = c(""),
 		Activity = c(""),
@@ -183,13 +182,16 @@ wfDsActAft20m <- function(dFrame) {
 					#aux data frame
 
 					#add the actual information iSub
+				  aux$TrafficDate <- iSub$TrafficDate
 					aux$Trainnumber <- iTrain
 					aux$Trainseries <- iSub$Trainseries
-					aux$Weekday = c(iSub$Weekday)
-					aux$Location = iSub$Location
-					aux$Activity = iSub$Activity
-					aux$PlannedTime = iSub$PTimeStr
-					aux$Delay_min = iSub$Delay_min
+					aux$TrainCharacteristic <- iSub$TrainCharacteristic
+					aux$Weekday <- iSub$Weekday
+					aux$Location <- iSub$Location
+					aux$Activity <- iSub$Activity
+					aux$PlannedTime <- iSub$PTimeStr
+					aux$Delay_min <- iSub$Delay_min
+					
 				  
 				  #Cause jTime is bigger than iTime+20minutes
 				  #check if the station before is closser to iTime+20
@@ -224,7 +226,7 @@ wfDsActAft20m <- function(dFrame) {
 						
 					}
 					write.table(aux, 
-					            file = "realisationWF1M.csv", 
+					            file = fname, 
 					            sep = ",", row.names = FALSE, 
 					            col.names = col_names, 
 					            append = !col_names)
@@ -244,7 +246,7 @@ wfDsActAft20m <- function(dFrame) {
 }
 ```
 ```{r open_realisation_data}
-realisation = fread(file = "DecRealisationData.csv", header = TRUE, colClasses = c("Date", "character", "character", "character", "character", "character", "Date", "Date", "integer", "integer", "character" ))
+realisation = fread(file = "OctRealisationData.csv", header = TRUE, colClasses = c("Date", "character", "character", "character", "character", "character", "Date", "Date", "integer", "integer", "character" ))
 nrow(realisation)
 ```
 ```{r call_changeDTaddAC}
@@ -259,7 +261,7 @@ Sys.time()
 # ---------------------------------------------
 # |                 Warning                   |
 # |     This function takes a lot of time     |
-# |     N° Observation    Time (minutes)      |
+# |     N° Observation    Time (minutes)     |
 # |          100000           13.1399         |
 # |          500000          128.75178        |
 # |         1000000          478.9899         |
@@ -268,23 +270,18 @@ Sys.time()
 #**
 s <- Sys.time()
 s
-wfDsActAft20m(realisation)
+wfDsActAft20m(realisation, "OctRealisationWF.csv")
 e <- Sys.time()
 e
 e - s
 ```
-```{r rename_columns_wf}
-names(realisation_wf) <- c("Trainnumber", "Trainseries", "Weekday", "Location", "Activity", "PlannedTime", "Delay_min", "Location_20", "Activity_20", "PlannedTime_20", "Delay_min_20")
-```
-```{r write_wide_format_dataset}
-write.matrix(realisation_wf, file = "RealisationWF.csv", sep = ",")
-```
+
 ```{r test}
-realisation_wf = fread(file = "realisationWF1M.csv", header = TRUE, colClasses = c("factor", "factor", "integer", "factor", "factor", "character", "integer", "factor", "factor", "character", "integer"  ))
+realisation_wf = fread(file = "SepRealisationWF.csv", header = TRUE, colClasses = c("factor", "factor", "factor", "integer", "factor", "factor", "character", "integer", "factor", "factor", "character", "integer"  ))
 ```
 
 ```{r}
-fit <- rpart(Delay_min_20~ Trainnumber + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
+fit <- rpart(Delay_min_20~ Trainnumber + TrainCharacteristic + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
 ```
 
 ```{r}
@@ -298,6 +295,6 @@ realisation_wf[, PlannedTime_20 := hm(PlannedTime_20)]
 ```
 
 ```{r}
-fit2 <- rpart(Delay_min_20 ~ Trainnumber + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
+fit2 <- rpart(Delay_min_20 ~ Trainnumber + TrainCharacteristic + Trainseries + Weekday + Location + Activity + PlannedTime + Delay_min + Location_20 + Activity_20 + PlannedTime_20, data = realisation_wf)
 printcp(fit2)
 ```

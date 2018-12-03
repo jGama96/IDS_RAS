@@ -8,16 +8,12 @@ output: word_document
 ```{r import_libraries}
 require(data.table)
 library(data.table)
-
 require(GGally)
 library(GGally)
-
 require(lubridate)
 library(lubridate)
-
 require(rpart)
 library(rpart)
-
 require(stringr)
 library(stringr)
 ```
@@ -36,13 +32,10 @@ library(stringr)
 # ---------------------------------------------
 #*
 #**
-
 #read RealisationData
 realisation = fread(file = "RealisationData.csv", header = TRUE, colClasses = c("Date", "character", "character", "character", "character", "character", "Date", "Date", "integer", "integer", "character" ))
-
 #change TrafficDate to date format with lubridate "yyyy-mm-dd"
 realisation[, TrafficDate := ymd(realisation$TrafficDate)]
-
 #generate boundaries for each month
 endSep <- ymd("2017-09-30") 
 staOct <- ymd("2017-10-01")
@@ -51,36 +44,30 @@ staNov <- ymd("2017-11-01")
 endNov <- ymd("2017-11-30")
 staDec <- ymd("2017-12-01")
 endDec <- ymd("2017-12-31")
-
 #generate subset with september information
 sepRealisation <- subset(realisation, TrafficDate <= endSep)
 #write subset in a csv file
 write.csv(sepRealisation, file = "SepRealisationData.csv", row.names = FALSE)
 #Erase subset to not saturate RAM
 rm(sepRealisation)
-
 #generate subset with october information
 octRealisation <- subset(realisation, staOct <= TrafficDate & TrafficDate <= endOct)
 #write subset in a csv file
 write.csv(octRealisation, file = "OctRealisationData.csv", row.names = FALSE)
 #Erase subset to not saturate RAM
 rm(octRealisation)
-
-
 #generate subset with november information
 novRealisation <- subset(realisation, staNov <= TrafficDate & TrafficDate <= endNov)
 #write subset in a csv file
 write.csv(novRealisation, file = "NovRealisationData.csv", row.names = FALSE)
 #Erase subset to not saturate RAM
 rm(novRealisation)
-
 #generate subset with december information
 decRealisation <- subset(realisation, staDec <= TrafficDate & TrafficDate <= endDec)
 #write subset in a csv file
 write.csv(decRealisation, file = "DecRealisationData.csv", row.names = FALSE)
 #Erase subset to not saturate RAM
 rm(decRealisation)
-
 #Erase variables to not saturate RAM
 rm(realisation)
 rm(list = c("endSep", "staOct", "endOct" , "staNov", "endNov", "staDec", "endDec"))
@@ -121,6 +108,7 @@ changeDTaddAC <- function(dFrame) {
 #   wfDsCur20m <- [w]ide [f]ormat [D]ata[s]et [Act]ual and [Aft]er [20] [m]inutes
 # Arguments:
 #   (data.frame) dFrame
+#   (Character) name
 # Objective:
 #   Change the dFrame to wide format, observation with actual and 20 min after.
 # Return:
@@ -128,13 +116,12 @@ changeDTaddAC <- function(dFrame) {
 # Author:
 #   Javier
 # Last Modification:
-#   Nov 20, 2018
+#   Dec 2, 2018
 #
 #**
-wfDsActAft20m <- function(dFrame, fname) {
+wfDsActAft20m <- function(dFrame, name) {
 	
 	col_names = TRUE
-
 	aux <- data.frame(
 	  TrafficDate = c(""),
 		Trainnumber = c(""),
@@ -145,11 +132,19 @@ wfDsActAft20m <- function(dFrame, fname) {
 		Activity = c(""),
 		PlannedTime = c(""),
 		Delay_min = c(""),
+		DelayJump = c(""),
 		Location_20 = c(""),
 		Activity_20 = c(""),
 		PlannedTime_20 = c(""),
-		Delay_min_20 = c(""))
-
+		Delay_min_20 = c(""),
+		DelayJump_20 = c("")
+	)
+	
+	numObs <- 0
+	numFile <- 1
+	ext <- ".csv"
+	fname <- paste(c(name, toString(numFile), ext), collapse = "")
+	
 	n <- nrow(dFrame) #number of observation
 	
 	i <- 1 #control variable
@@ -180,7 +175,6 @@ wfDsActAft20m <- function(dFrame, fname) {
 				if(iTime20 < jTime) {
 					
 					#aux data frame
-
 					#add the actual information iSub
 				  aux$TrafficDate <- iSub$TrafficDate
 					aux$Trainnumber <- iTrain
@@ -191,6 +185,7 @@ wfDsActAft20m <- function(dFrame, fname) {
 					aux$Activity <- iSub$Activity
 					aux$PlannedTime <- iSub$PTimeStr
 					aux$Delay_min <- iSub$Delay_min
+					aux$DelayJump <- iSub$DelayJump
 					
 				  
 				  #Cause jTime is bigger than iTime+20minutes
@@ -215,6 +210,7 @@ wfDsActAft20m <- function(dFrame, fname) {
 						aux$Activity_20 = pSub$Activity
 						aux$PlannedTime_20 = pSub$PTimeStr
 						aux$Delay_min_20 = pSub$Delay_min
+						aux$DelayJump_20 = pSub$DelayJump
 						
 					} else {#jSub is closer to iSub than pSub
 						
@@ -222,7 +218,8 @@ wfDsActAft20m <- function(dFrame, fname) {
 						aux$Location_20 = jSub$Location
 						aux$Activity_20 = jSub$Activity
 						aux$PlannedTime_20 = jSub$PTimeStr
-						aux$Delay_min_20 = jSub$Delay_min	
+						aux$Delay_min_20 = jSub$Delay_min
+						aux$DelayJump_20 = jSub$DelayJump
 						
 					}
 					write.table(aux, 
@@ -233,6 +230,14 @@ wfDsActAft20m <- function(dFrame, fname) {
 					if(col_names) {
 						col_names <- !col_names
 					}
+					numObs <- numObs + 1
+					if(numObs == 100000) {
+					  numObs <- 0
+					  numFile <- numFile + 1
+					  fname <- paste(c(name, toString(numFile), ext), collapse = "")
+					  col_names <- !col_names
+					}
+					
 					break
 				}
 			} else { #iSub and jSub are observation for different trains
@@ -261,7 +266,7 @@ Sys.time()
 # ---------------------------------------------
 # |                 Warning                   |
 # |     This function takes a lot of time     |
-# |     N° Observation    Time (minutes)     |
+# |     N° Observation    Time (minutes)      |
 # |          100000           13.1399         |
 # |          500000          128.75178        |
 # |         1000000          478.9899         |
@@ -270,7 +275,7 @@ Sys.time()
 #**
 s <- Sys.time()
 s
-wfDsActAft20m(realisation, "OctRealisationWF.csv")
+wfDsActAft20m(realisation, "OctRealisationWF")
 e <- Sys.time()
 e
 e - s
